@@ -3,4 +3,6 @@
 data.json
 data.json.*
 .tunnel-url
+.tunnel.pid
+.tunnel.log
 .toolchain

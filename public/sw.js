@@ -1,7 +1,7 @@
 // Shell cacheado para que la app abra aunque el túnel esté apagado.
 // Los avisos llegan desde Apple al service worker y se guardan localmente
 // para que se vean dentro de la app incluso con el túnel cerrado.
-const CACHE = 'avisos-v3';
+const CACHE = 'avisos-v4';
 const DATA_CACHE = 'avisos-data-v1';
 const DATA_KEY = '/__local_data__';
 const SHELL = ['/', '/index.html', '/app.js', '/manifest.json', '/icon-192.png', '/icon-512.png'];

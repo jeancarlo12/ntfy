@@ -87,14 +87,22 @@ function attachSwipeToDelete(li, card, n) {
   let dx = 0;
   let tracking = false;
   let lockedHorizontal = null;
+  let hideTimer = null;
+
+  function resetVisual() {
+    card.classList.remove('dragging');
+    card.style.transform = '';
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => li.classList.remove('swiping'), 180);
+  }
 
   function onStart(x, y) {
+    clearTimeout(hideTimer);
     startX = x;
     startY = y;
     dx = 0;
     tracking = true;
     lockedHorizontal = null;
-    card.classList.add('dragging');
   }
 
   function onMove(x, y, ev) {
@@ -102,31 +110,41 @@ function attachSwipeToDelete(li, card, n) {
     const deltaX = x - startX;
     const deltaY = y - startY;
     if (lockedHorizontal === null) {
-      if (Math.abs(deltaX) < 6 && Math.abs(deltaY) < 6) return;
-      lockedHorizontal = Math.abs(deltaX) > Math.abs(deltaY);
+      // Si se mueve verticalmente primero o hacia la izquierda, es scroll normal: cancelar swipe
+      if (Math.abs(deltaY) > 8 || deltaX < -8) {
+        lockedHorizontal = false;
+        tracking = false;
+        return;
+      }
+      // Exigir un desplazamiento claro hacia la derecha y ángulo horizontal (< ~22°)
+      if (deltaX < 16 || deltaX < Math.abs(deltaY) * 2.5) return;
+      lockedHorizontal = true;
+      card.classList.add('dragging');
     }
-    if (!lockedHorizontal) {
-      tracking = false;
-      card.classList.remove('dragging');
-      card.style.transform = '';
-      return;
-    }
+    if (!lockedHorizontal) return;
     if (ev && ev.cancelable) ev.preventDefault();
-    dx = Math.max(0, deltaX);
-    card.style.transform = `translateX(${dx}px)`;
+    dx = Math.max(0, deltaX - 16);
+    if (dx > 2) {
+      li.classList.add('swiping');
+    } else {
+      li.classList.remove('swiping');
+    }
+    card.style.transform = dx > 0 ? `translateX(${dx}px)` : '';
   }
 
   function onEnd() {
     if (!tracking) return;
     tracking = false;
+    if (!lockedHorizontal) return;
     card.classList.remove('dragging');
     const threshold = Math.min(95, (li.offsetWidth || 280) * 0.35);
     if (dx >= threshold) {
+      li.classList.add('swiping');
       card.style.transform = 'translateX(105%)';
       card.style.opacity = '0';
       setTimeout(() => deleteNotification(n, li), 170);
     } else {
-      card.style.transform = '';
+      resetVisual();
     }
   }
 

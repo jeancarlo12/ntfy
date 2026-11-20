@@ -24,13 +24,16 @@
     button:disabled { opacity:.5; }
     #status { color:var(--muted); font-size:.9rem; min-height:1.2em; }
     ul { list-style:none; padding:0; }
-    li { position:relative; border-radius:12px; margin-bottom:.6rem; background:var(--danger);
+    li { position:relative; border-radius:12px; margin-bottom:.6rem; background:transparent;
          overflow:hidden; user-select:none; -webkit-user-select:none; touch-action:pan-y; }
+    li.swiping { background:var(--danger); }
     .delete-bg { position:absolute; inset:0; display:flex; align-items:center; padding-left:1rem;
-                 color:#fff; font-weight:600; font-size:.9rem; pointer-events:none; }
+                 color:#fff; font-weight:600; font-size:.9rem; pointer-events:none;
+                 opacity:0; visibility:hidden; }
+    li.swiping .delete-bg { opacity:1; visibility:visible; }
     .card { position:relative; background:var(--card); border-radius:12px; padding:.8rem 1rem;
-            transition:transform .18s ease, opacity .18s ease; will-change:transform; }
-    .card.dragging { transition:none; }
+            transition:transform .18s ease, opacity .18s ease; }
+    .card.dragging { transition:none; will-change:transform; }
     .title { font-weight:600; }
     .body { margin-top:.2rem; word-break:break-word; }
     .time { color:var(--muted); font-size:.8rem; margin-top:.3rem; }
