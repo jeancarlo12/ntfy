@@ -42,6 +42,21 @@ plist() { # plist NOMBRE
 EOF
 }
 
+# launchctl vuelve antes de que el servidor escuche: espera a /api/health (hasta 20 s).
+wait_ready() {
+  [ "$1" = server ] || return 0
+  for _ in $(seq 1 20); do
+    if curl -fsS --max-time 2 "$NOTIFY_URL/api/health" >/dev/null 2>&1; then
+      echo "✓ servidor respondiendo en $NOTIFY_URL"
+      return 0
+    fi
+    sleep 1
+  done
+  echo "✗ el servidor no respondió en 20 s. Últimas líneas de $LOGS/server.log:" >&2
+  tail -n 20 "$LOGS/server.log" >&2 || true
+  return 1
+}
+
 cmd="${1:-status}"
 case "$cmd" in
   install)
@@ -53,6 +68,7 @@ case "$cmd" in
       launchctl bootout "$DOMAIN/$(label "$t")" 2>/dev/null || true
       launchctl bootstrap "$DOMAIN" "$f"
       echo "✓ $(label "$t") instalado (log: $LOGS/$t.log)"
+      wait_ready "$t"
     done
     ;;
   uninstall)
@@ -63,7 +79,10 @@ case "$cmd" in
     done
     ;;
   restart)
-    for t in $(targets "${2:-all}"); do launchctl kickstart -k "$DOMAIN/$(label "$t")"; done
+    for t in $(targets "${2:-all}"); do
+      launchctl kickstart -k "$DOMAIN/$(label "$t")"
+      wait_ready "$t"
+    done
     ;;
   status)
     for t in server watch; do

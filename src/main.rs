@@ -11,7 +11,10 @@ use rand_core::{OsRng, RngCore};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex,
+    },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use storage::{Notification, Subscription};
@@ -245,13 +248,28 @@ fn truncate(s: &str, max: usize) -> String {
     out
 }
 
+/// Milisegundos Unix, pero nunca repetido: dos avisos en el mismo milisegundo
+/// (p. ej. un hook de Claude Code y el watcher de Stratus) tendrían el mismo id
+/// y el iPhone guardaría solo uno.
+fn next_id(now_ms: u64) -> u64 {
+    static LAST: AtomicU64 = AtomicU64::new(0);
+    let mut prev = LAST.load(Ordering::Relaxed);
+    loop {
+        let id = now_ms.max(prev + 1);
+        match LAST.compare_exchange_weak(prev, id, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => return id,
+            Err(actual) => prev = actual,
+        }
+    }
+}
+
 /// Returns (sent, failed).
 async fn dispatch_push(st: &AppState, title: String, body: String, tag: Option<String>) -> (usize, usize) {
     let title = truncate(title.trim(), MAX_TITLE);
     let body = truncate(body.trim(), MAX_BODY);
     let tag = tag.map(|t| truncate(&t, 64));
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-    let id = now.as_millis() as u64;
+    let id = next_id(now.as_millis() as u64);
     let time = now.as_secs();
     storage::add_notification(Notification { id, title: title.clone(), body: body.clone(), time });
 
