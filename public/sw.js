@@ -1,7 +1,41 @@
 // Shell cacheado para que la app abra aunque el túnel esté apagado.
-// Los avisos no dependen del túnel: llegan desde Apple directamente al service worker.
-const CACHE = 'avisos-v2';
+// Los avisos llegan desde Apple al service worker y se guardan localmente
+// para que se vean dentro de la app incluso con el túnel cerrado.
+const CACHE = 'avisos-v3';
+const DATA_CACHE = 'avisos-data-v1';
+const DATA_KEY = '/__local_data__';
 const SHELL = ['/', '/index.html', '/app.js', '/manifest.json', '/icon-192.png', '/icon-512.png'];
+
+async function readLocalData() {
+  try {
+    const c = await caches.open(DATA_CACHE);
+    const res = await c.match(DATA_KEY);
+    if (res) return await res.json();
+  } catch (_) {}
+  return { items: [], deleted: [] };
+}
+
+async function savePushLocally(data) {
+  try {
+    const store = await readLocalData();
+    const id = Number(data.id) || Date.now();
+    const time = Number(data.time) || Math.floor(Date.now() / 1000);
+    if (store.deleted.includes(id)) return;
+    const item = { id, title: data.title || 'Aviso', body: data.body || '', time };
+    store.items = [item, ...store.items.filter(x => (x.id || x.time) !== id)].slice(0, 100);
+    const c = await caches.open(DATA_CACHE);
+    await c.put(DATA_KEY, new Response(JSON.stringify(store), {
+      headers: { 'Content-Type': 'application/json' },
+    }));
+  } catch (_) {}
+}
+
+async function notifyClients() {
+  try {
+    const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of list) client.postMessage({ type: 'push' });
+  } catch (_) {}
+}
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)));
@@ -11,7 +45,7 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE && k !== DATA_CACHE).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -19,7 +53,6 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   if (event.request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
-  // Red primero (para recibir cambios); si falla o el túnel responde con error, usa la copia.
   event.respondWith(
     fetch(event.request)
       .then(res => {
@@ -42,10 +75,25 @@ self.addEventListener('push', event => {
   const options = { body: data.body || '', icon: '/icon-192.png' };
   if (data.tag) options.tag = data.tag;
   // iOS exige mostrar siempre una notificación por cada push.
-  event.waitUntil(self.registration.showNotification(data.title || 'Aviso', options));
+  event.waitUntil(
+    Promise.all([
+      savePushLocally(data).then(notifyClients),
+      self.registration.showNotification(data.title || 'Aviso', options),
+    ])
+  );
 });
 
 self.addEventListener('notificationclick', event => {
   event.notification.close();
-  event.waitUntil(clients.openWindow('/'));
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+      for (const client of list) {
+        if ('focus' in client) {
+          client.postMessage({ type: 'push' });
+          return client.focus();
+        }
+      }
+      return self.clients.openWindow('/');
+    })
+  );
 });

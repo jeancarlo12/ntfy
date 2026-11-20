@@ -22,6 +22,8 @@ pub struct Keys {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Notification {
+    #[serde(default)]
+    pub id: u64,
     pub title: String,
     pub body: String,
     /// Segundos Unix
@@ -107,6 +109,21 @@ pub fn add_notification(n: Notification) {
 pub fn list_notifications() -> Vec<Notification> {
     let _g = LOCK.lock().unwrap();
     load().notifications
+}
+
+pub fn remove_notification(id: u64) -> bool {
+    let _g = LOCK.lock().unwrap();
+    let mut d = load();
+    if let Some(pos) = d
+        .notifications
+        .iter()
+        .position(|n| n.id == id || (n.id == 0 && n.time == id))
+    {
+        d.notifications.remove(pos);
+        save(&d);
+        return true;
+    }
+    false
 }
 
 pub fn add_device(token: &str) {

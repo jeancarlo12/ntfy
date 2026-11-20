@@ -4,14 +4,40 @@ const testBtn = $('test');
 const statusEl = $('status');
 const list = $('list');
 const TOKEN_KEY = 'avisos_token';
+const DATA_CACHE = 'avisos-data-v1';
+const DATA_KEY = '/__local_data__';
 
-// La app instalada en la pantalla de inicio tiene su propio almacenamiento (separado de Safari),
-// así que la vinculación se hace dentro de la app instalada.
 function getToken() {
   try { return localStorage.getItem(TOKEN_KEY); } catch (_) { return null; }
 }
 function setToken(t) {
   try { t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY); } catch (_) {}
+}
+
+async function readLocalData() {
+  try {
+    if ('caches' in window) {
+      const c = await caches.open(DATA_CACHE);
+      const res = await c.match(DATA_KEY);
+      if (res) return await res.json();
+    }
+  } catch (_) {}
+  return { items: [], deleted: [] };
+}
+
+async function writeLocalData(store) {
+  try {
+    if ('caches' in window) {
+      const c = await caches.open(DATA_CACHE);
+      await c.put(DATA_KEY, new Response(JSON.stringify(store), {
+        headers: { 'Content-Type': 'application/json' },
+      }));
+    }
+  } catch (_) {}
+}
+
+function itemId(n) {
+  return Number(n.id) || Number(n.time) || 0;
 }
 
 async function api(path, opts = {}) {
@@ -24,6 +50,7 @@ async function api(path, opts = {}) {
     showPairing();
     throw new Error('Esta app ya no está vinculada. Pide un código nuevo en el Mac.');
   }
+  if (!res.ok) throw new Error('HTTP ' + res.status);
   return res;
 }
 
@@ -43,19 +70,101 @@ function b64ToBytes(s) {
   return Uint8Array.from(raw, c => c.charCodeAt(0));
 }
 
-async function loadList() {
-  if (!getToken()) return;
-  let items;
-  try {
-    items = await (await api('/api/notifications')).json();
-  } catch (_) {
-    // Túnel apagado: los avisos siguen llegando, solo el historial no está disponible.
-    if (!statusEl.textContent) statusEl.textContent = 'Sin conexión con el Mac (el historial no está disponible).';
-    return;
+async function deleteNotification(n, li) {
+  const id = itemId(n);
+  if (li && li.parentNode) li.remove();
+  const store = await readLocalData();
+  if (!store.deleted.includes(id)) store.deleted.push(id);
+  store.deleted = store.deleted.slice(-200);
+  store.items = store.items.filter(x => itemId(x) !== id);
+  await writeLocalData(store);
+  api('/api/notifications/' + id, { method: 'DELETE' }).catch(() => {});
+}
+
+function attachSwipeToDelete(li, card, n) {
+  let startX = 0;
+  let startY = 0;
+  let dx = 0;
+  let tracking = false;
+  let lockedHorizontal = null;
+
+  function onStart(x, y) {
+    startX = x;
+    startY = y;
+    dx = 0;
+    tracking = true;
+    lockedHorizontal = null;
+    card.classList.add('dragging');
   }
+
+  function onMove(x, y, ev) {
+    if (!tracking) return;
+    const deltaX = x - startX;
+    const deltaY = y - startY;
+    if (lockedHorizontal === null) {
+      if (Math.abs(deltaX) < 6 && Math.abs(deltaY) < 6) return;
+      lockedHorizontal = Math.abs(deltaX) > Math.abs(deltaY);
+    }
+    if (!lockedHorizontal) {
+      tracking = false;
+      card.classList.remove('dragging');
+      card.style.transform = '';
+      return;
+    }
+    if (ev && ev.cancelable) ev.preventDefault();
+    dx = Math.max(0, deltaX);
+    card.style.transform = `translateX(${dx}px)`;
+  }
+
+  function onEnd() {
+    if (!tracking) return;
+    tracking = false;
+    card.classList.remove('dragging');
+    const threshold = Math.min(95, (li.offsetWidth || 280) * 0.35);
+    if (dx >= threshold) {
+      card.style.transform = 'translateX(105%)';
+      card.style.opacity = '0';
+      setTimeout(() => deleteNotification(n, li), 170);
+    } else {
+      card.style.transform = '';
+    }
+  }
+
+  card.addEventListener('touchstart', e => {
+    if (e.touches.length === 1) onStart(e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: true });
+  card.addEventListener('touchmove', e => {
+    if (e.touches.length === 1) onMove(e.touches[0].clientX, e.touches[0].clientY, e);
+  }, { passive: false });
+  card.addEventListener('touchend', onEnd);
+  card.addEventListener('touchcancel', onEnd);
+
+  card.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'touch') return;
+    onStart(e.clientX, e.clientY);
+    card.setPointerCapture(e.pointerId);
+  });
+  card.addEventListener('pointermove', e => {
+    if (e.pointerType === 'touch') return;
+    onMove(e.clientX, e.clientY, e);
+  });
+  card.addEventListener('pointerup', e => {
+    if (e.pointerType === 'touch') return;
+    onEnd();
+  });
+}
+
+function renderList(items) {
   list.innerHTML = '';
   for (const n of items) {
     const li = document.createElement('li');
+    const bg = document.createElement('div');
+    bg.className = 'delete-bg';
+    bg.textContent = 'Borrar';
+    li.appendChild(bg);
+
+    const card = document.createElement('div');
+    card.className = 'card';
     for (const [cls, text] of [
       ['title', n.title],
       ['body', n.body],
@@ -64,9 +173,34 @@ async function loadList() {
       const div = document.createElement('div');
       div.className = cls;
       div.textContent = text;
-      li.appendChild(div);
+      card.appendChild(div);
     }
+    li.appendChild(card);
+    attachSwipeToDelete(li, card, n);
     list.appendChild(li);
+  }
+}
+
+async function loadList() {
+  if (!getToken()) return;
+  const store = await readLocalData();
+  renderList(store.items);
+
+  try {
+    const remote = await (await api('/api/notifications')).json();
+    const byId = new Map();
+    for (const n of [...remote, ...store.items]) {
+      const id = itemId(n);
+      if (store.deleted.includes(id)) continue;
+      if (!byId.has(id)) byId.set(id, Object.assign({ id }, n));
+    }
+    store.items = Array.from(byId.values())
+      .sort((a, b) => (b.time - a.time) || (itemId(b) - itemId(a)))
+      .slice(0, 100);
+    await writeLocalData(store);
+    renderList(store.items);
+  } catch (_) {
+    // Túnel apagado: mostramos los avisos guardados localmente por el Service Worker.
   }
 }
 
@@ -106,12 +240,11 @@ async function enable() {
         applicationServerKey: b64ToBytes(key),
       });
     }
-    const res = await api('/api/subscribe', {
+    await api('/api/subscribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(sub),
     });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
     btn.hidden = true;
     statusEl.textContent = 'Notificaciones activadas ✓';
   } catch (e) {
@@ -136,7 +269,11 @@ if ('serviceWorker' in navigator) {
       if (await reg.pushManager.getSubscription()) btn.hidden = true;
     }
   });
+  navigator.serviceWorker.addEventListener('message', () => loadList());
 }
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) loadList();
+});
 $('pairBtn').addEventListener('click', pair);
 btn.addEventListener('click', enable);
 testBtn.addEventListener('click', sendTest);

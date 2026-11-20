@@ -1,9 +1,9 @@
 mod storage;
 
 use axum::{
-    extract::State,
+    extract::{Path, State},
     http::{header::AUTHORIZATION, HeaderMap, StatusCode},
-    routing::{get, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use base64::Engine as _;
@@ -69,6 +69,7 @@ async fn main() {
         .route("/api/pair", post(pair))
         .route("/api/subscribe", post(subscribe))
         .route("/api/notifications", get(notifications))
+        .route("/api/notifications/:id", delete(delete_notification))
         .route("/api/status", get(status))
         .route("/api/notify", post(notify))
         .route("/api/test", post(test_push))
@@ -177,6 +178,18 @@ async fn notifications(
     Ok(Json(storage::list_notifications()))
 }
 
+async fn delete_notification(
+    State(st): State<Shared>,
+    headers: HeaderMap,
+    Path(id): Path<u64>,
+) -> StatusCode {
+    if !is_member(&st, &headers) {
+        return StatusCode::UNAUTHORIZED;
+    }
+    storage::remove_notification(id);
+    StatusCode::NO_CONTENT
+}
+
 async fn status(State(st): State<Shared>, headers: HeaderMap) -> Result<Json<Value>, StatusCode> {
     if !is_admin(&st, &headers) {
         return Err(StatusCode::UNAUTHORIZED);
@@ -237,10 +250,12 @@ async fn dispatch_push(st: &AppState, title: String, body: String, tag: Option<S
     let title = truncate(title.trim(), MAX_TITLE);
     let body = truncate(body.trim(), MAX_BODY);
     let tag = tag.map(|t| truncate(&t, 64));
-    let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-    storage::add_notification(Notification { title: title.clone(), body: body.clone(), time });
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+    let id = now.as_millis() as u64;
+    let time = now.as_secs();
+    storage::add_notification(Notification { id, title: title.clone(), body: body.clone(), time });
 
-    let payload = json!({ "title": title, "body": body, "tag": tag }).to_string();
+    let payload = json!({ "id": id, "title": title, "body": body, "time": time, "tag": tag }).to_string();
     let client = match IsahcWebPushClient::new() {
         Ok(c) => c,
         Err(e) => {
