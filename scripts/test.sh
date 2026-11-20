@@ -16,7 +16,12 @@ code_of() { curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$@"; }
 
 t_server() {
   echo "Servidor ($NOTIFY_URL)"
-  if [ "$(code_of "$NOTIFY_URL/api/health")" = 200 ]; then pass "responde /api/health"; else fail "no responde: scripts/service.sh install server; scripts/service.sh logs"; return; fi
+  local up=0
+  for _ in 1 2 3 4 5; do # margen por si se acaba de reiniciar
+    if [ "$(code_of "$NOTIFY_URL/api/health")" = 200 ]; then up=1; break; fi
+    sleep 1
+  done
+  if [ "$up" = 1 ]; then pass "responde /api/health"; else fail "no responde: scripts/service.sh status; scripts/service.sh logs"; return; fi
   [ "$(code_of "$NOTIFY_URL/api/notifications")" = 401 ] && pass "historial sin token → 401" || fail "historial accesible sin token"
   [ "$(code_of -X POST "$NOTIFY_URL/api/subscribe" -H 'Content-Type: application/json' -d '{}')" != 201 ] && pass "suscribirse sin token → rechazado" || fail "suscripción sin token aceptada"
   [ "$(code_of -X POST "$NOTIFY_URL/api/notify" -H 'Authorization: Bearer nope' -H 'Content-Type: application/json' -d '{"title":"x"}')" = 401 ] && pass "token incorrecto → 401" || fail "token incorrecto aceptado"
