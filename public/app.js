@@ -4,8 +4,8 @@ const testBtn = $('test');
 const statusEl = $('status');
 const list = $('list');
 const TOKEN_KEY = 'avisos_token';
-const DATA_CACHE = 'avisos-data-v1';
-const DATA_KEY = '/__local_data__';
+const Store = self.AvisosStore; // public/store.js, compartido con el service worker
+const itemId = Store.idOf;
 
 function getToken() {
   try { return localStorage.getItem(TOKEN_KEY); } catch (_) { return null; }
@@ -14,31 +14,8 @@ function setToken(t) {
   try { t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY); } catch (_) {}
 }
 
-async function readLocalData() {
-  try {
-    if ('caches' in window) {
-      const c = await caches.open(DATA_CACHE);
-      const res = await c.match(DATA_KEY);
-      if (res) return await res.json();
-    }
-  } catch (_) {}
-  return { items: [], deleted: [] };
-}
-
-async function writeLocalData(store) {
-  try {
-    if ('caches' in window) {
-      const c = await caches.open(DATA_CACHE);
-      await c.put(DATA_KEY, new Response(JSON.stringify(store), {
-        headers: { 'Content-Type': 'application/json' },
-      }));
-    }
-  } catch (_) {}
-}
-
-function itemId(n) {
-  return Number(n.id) || Number(n.time) || 0;
-}
+// Pide a iOS que no borre el almacenamiento de la app cuando falte espacio.
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 
 async function api(path, opts = {}) {
   const headers = Object.assign({}, opts.headers || {});
@@ -73,11 +50,8 @@ function b64ToBytes(s) {
 async function deleteNotification(n, li) {
   const id = itemId(n);
   if (li && li.parentNode) li.remove();
-  const store = await readLocalData();
-  if (!store.deleted.includes(id)) store.deleted.push(id);
-  store.deleted = store.deleted.slice(-200);
-  store.items = store.items.filter(x => itemId(x) !== id);
-  await writeLocalData(store);
+  try { await Store.remove(id); } catch (_) {}
+  // Si el Mac no responde (túnel cerrado), loadList() reintenta el borrado la próxima vez que haya conexión.
   api('/api/notifications/' + id, { method: 'DELETE' }).catch(() => {});
 }
 
@@ -173,6 +147,8 @@ function attachSwipeToDelete(li, card, n) {
 }
 
 function renderList(items) {
+  // No redibujar en mitad de un deslizamiento: se perdería el gesto.
+  if (list.querySelector('.card.dragging')) return;
   list.innerHTML = '';
   for (const n of items) {
     const li = document.createElement('li');
@@ -199,27 +175,34 @@ function renderList(items) {
   }
 }
 
+async function localItems() {
+  try { return await Store.list(); } catch (_) { return []; }
+}
+
 async function loadList() {
   if (!getToken()) return;
-  const store = await readLocalData();
-  renderList(store.items);
+  renderList(await localItems());
 
+  let remote;
   try {
-    const remote = await (await api('/api/notifications')).json();
-    const byId = new Map();
-    for (const n of [...remote, ...store.items]) {
-      const id = itemId(n);
-      if (store.deleted.includes(id)) continue;
-      if (!byId.has(id)) byId.set(id, Object.assign({ id }, n));
-    }
-    store.items = Array.from(byId.values())
-      .sort((a, b) => (b.time - a.time) || (itemId(b) - itemId(a)))
-      .slice(0, 100);
-    await writeLocalData(store);
-    renderList(store.items);
+    remote = await (await api('/api/notifications')).json();
   } catch (_) {
-    // Túnel apagado: mostramos los avisos guardados localmente por el Service Worker.
+    return; // Túnel apagado: se quedan los avisos guardados por el service worker.
   }
+  try {
+    const deleted = await Store.deletedIds();
+    for (const n of remote) {
+      const id = itemId(n);
+      if (deleted.has(id)) {
+        // Borrado en el iPhone mientras el Mac no respondía: reintenta en el servidor.
+        api('/api/notifications/' + id, { method: 'DELETE' }).catch(() => {});
+      } else {
+        await Store.put(n);
+      }
+    }
+    await Store.prune();
+  } catch (_) {}
+  renderList(await localItems());
 }
 
 async function pair() {

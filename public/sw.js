@@ -1,32 +1,20 @@
 // Shell cacheado para que la app abra aunque el túnel esté apagado.
-// Los avisos llegan desde Apple al service worker y se guardan localmente
+// Los avisos llegan desde Apple al service worker y se guardan localmente (store.js)
 // para que se vean dentro de la app incluso con el túnel cerrado.
-const CACHE = 'avisos-v4';
-const DATA_CACHE = 'avisos-data-v1';
-const DATA_KEY = '/__local_data__';
-const SHELL = ['/', '/index.html', '/app.js', '/manifest.json', '/icon-192.png', '/icon-512.png'];
+importScripts('/store.js');
 
-async function readLocalData() {
-  try {
-    const c = await caches.open(DATA_CACHE);
-    const res = await c.match(DATA_KEY);
-    if (res) return await res.json();
-  } catch (_) {}
-  return { items: [], deleted: [] };
-}
+const CACHE = 'avisos-v5';
+const SHELL = ['/', '/index.html', '/app.js', '/store.js', '/manifest.json', '/icon-192.png', '/icon-512.png'];
 
 async function savePushLocally(data) {
   try {
-    const store = await readLocalData();
-    const id = Number(data.id) || Date.now();
-    const time = Number(data.time) || Math.floor(Date.now() / 1000);
-    if (store.deleted.includes(id)) return;
-    const item = { id, title: data.title || 'Aviso', body: data.body || '', time };
-    store.items = [item, ...store.items.filter(x => (x.id || x.time) !== id)].slice(0, 100);
-    const c = await caches.open(DATA_CACHE);
-    await c.put(DATA_KEY, new Response(JSON.stringify(store), {
-      headers: { 'Content-Type': 'application/json' },
-    }));
+    await AvisosStore.put({
+      id: Number(data.id) || Date.now(),
+      title: data.title,
+      body: data.body,
+      time: Number(data.time) || Math.floor(Date.now() / 1000),
+    });
+    await AvisosStore.prune();
   } catch (_) {}
 }
 
@@ -44,8 +32,10 @@ self.addEventListener('install', event => {
 
 self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE && k !== DATA_CACHE).map(k => caches.delete(k))))
+    AvisosStore.migrateLegacy()
+      .catch(() => {})
+      .then(() => caches.keys())
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE && k !== AvisosStore.CACHE).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });

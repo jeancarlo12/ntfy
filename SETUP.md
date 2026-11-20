@@ -96,7 +96,7 @@ Stop the background `tunnel.sh` process (Ctrl-C or kill it), then run:
 scripts/notify.sh "Sin túnel" "Este aviso llegó con el túnel cerrado"
 ```
 
-🧍 Jimy confirms it arrived. This shows the tunnel isn't needed day to day. Note that every tunnel run gets a new URL. To see the in-app history later, reinstall the app from the new URL. Notifications keep working either way.
+🧍 Jimy confirms it arrived, and that it also shows in the app's list when he opens Avisos. The service worker saves each push on the phone, so the list works with the tunnel closed. Note that every tunnel run gets a new URL, and the installed app stays tied to the URL it was installed from.
 
 ## Step 6: Claude Code hooks on this Mac (ask first: edits ~/.claude/settings.json)
 
@@ -174,7 +174,8 @@ Report the results to Jimy.
 | Logs | `scripts/service.sh logs` |
 | Restart | `scripts/service.sh restart all` |
 | Pair a new phone / reinstall the app | `scripts/tunnel.sh` |
-| After `git pull` / code changes | `cargo build --release && scripts/service.sh restart server` |
+| After `git pull`, server changes (`src/`) | `cargo build --release && scripts/service.sh restart server` |
+| After app changes (`public/`) | The installed app only picks up new files from the URL it was installed from. If that tunnel is closed, run `scripts/tunnel.sh`, delete the old home-screen icon, install from the new URL, and pair again. The last 100 notifications come back from the Mac. |
 
 ## Troubleshooting
 
