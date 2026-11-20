@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <title>Avisos</title>
+  <title>Notifications</title>
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icon-192.png">
   <style>
@@ -20,7 +20,7 @@
     #ptr { height:0; overflow:hidden; display:flex; align-items:center; justify-content:center;
            color:var(--muted); font-size:.85rem; transition:height .18s ease; }
     #ptr.pulling { transition:none; }
-    h1 { font-size:1.5rem; margin-top:.2rem; }
+    h1 { font-size:1.5rem; margin:.2rem 0 1rem; font-variant-numeric:tabular-nums; }
     button { width:100%; padding:.8rem; font-size:1rem; border:0; border-radius:10px;
              background:var(--accent); color:#fff; margin-bottom:.5rem; cursor:pointer; }
     button:disabled { opacity:.4; cursor:default; }
@@ -52,22 +52,22 @@
   </style>
 </head>
 <body>
-  <div id="ptr"><span id="ptrText">Desliza para actualizar</span></div>
-  <h1>Avisos</h1>
+  <div id="ptr"><span id="ptrText">Pull to refresh</span></div>
+  <h1>Notifications<span id="count" hidden></span></h1>
   <section id="pair" hidden>
-    <p>Escribe el código de 8 dígitos que muestra <code>scripts/tunnel.sh</code> en tu Mac.</p>
+    <p>Enter the 8-digit code shown by <code>scripts/tunnel.sh</code> on your Mac.</p>
     <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="00000000">
-    <button id="pairBtn">Vincular</button>
+    <button id="pairBtn">Pair device</button>
   </section>
   <section id="main" hidden>
-    <button id="enable" hidden>Activar notificaciones</button>
+    <button id="enable" hidden>Enable notifications</button>
   </section>
   <p id="status"></p>
   <ul id="list"></ul>
-  <p id="empty" class="empty" hidden>No hay notificaciones</p>
+  <p id="empty" class="empty" hidden>No notifications</p>
   <footer id="footer" class="footer" hidden>
-    <button id="clearAll" class="btn-sm">Borrar todas</button>
-    <button id="test" class="btn-sm">Probar (5s)</button>
+    <button id="clearAll" class="btn-sm">Clear all</button>
+    <button id="test" class="btn-sm">Test (5s)</button>
   </footer>
   <script src="/app.js"></script>
 </body>

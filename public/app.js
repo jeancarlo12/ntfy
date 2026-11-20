@@ -8,6 +8,7 @@ const emptyEl = $('empty');
 const footerEl = $('footer');
 const ptrEl = $('ptr');
 const ptrText = $('ptrText');
+const countEl = $('count');
 const TOKEN_KEY = 'avisos_token';
 const DATA_CACHE = 'avisos-data-v1';
 const DATA_KEY = '/__local_data__';
@@ -56,7 +57,7 @@ async function api(path, opts = {}) {
   if (res.status === 401) {
     setToken(null);
     showPairing();
-    throw new Error('Esta app ya no está vinculada. Pide un código nuevo en el Mac.');
+    throw new Error('This device is no longer paired. Request a new code on your Mac.');
   }
   if (!res.ok) throw new Error('HTTP ' + res.status);
   return res;
@@ -67,12 +68,14 @@ function showPairing() {
   $('main').hidden = true;
   footerEl.hidden = true;
   emptyEl.hidden = true;
+  countEl.hidden = true;
 }
 
 function showMain() {
   $('pair').hidden = true;
   $('main').hidden = false;
   footerEl.hidden = false;
+  countEl.hidden = false;
 }
 
 function b64ToBytes(s) {
@@ -83,6 +86,7 @@ function b64ToBytes(s) {
 
 function updateEmptyAndFooter(count) {
   if (!$('main').hidden) {
+    countEl.textContent = ': ' + count;
     emptyEl.hidden = count > 0;
     clearBtn.disabled = count === 0;
   }
@@ -217,7 +221,7 @@ function renderList(items, force = false) {
     const li = document.createElement('li');
     const bg = document.createElement('div');
     bg.className = 'delete-bg';
-    bg.textContent = 'Borrar';
+    bg.textContent = 'Delete';
     li.appendChild(bg);
 
     const card = document.createElement('div');
@@ -308,7 +312,7 @@ function setupPullToRefresh() {
     if (pull > 0) {
       ptrEl.classList.add('pulling');
       ptrEl.style.height = `${pull}px`;
-      ptrText.textContent = pull >= 48 ? 'Suelta para actualizar' : 'Desliza para actualizar';
+      ptrText.textContent = pull >= 48 ? 'Release to refresh' : 'Pull to refresh';
     }
   }, { passive: true });
 
@@ -319,7 +323,7 @@ function setupPullToRefresh() {
     if (pull >= 48 && !refreshing) {
       refreshing = true;
       ptrEl.style.height = '40px';
-      ptrText.textContent = 'Actualizando…';
+      ptrText.textContent = 'Refreshing…';
       await refreshApp();
       setTimeout(() => {
         ptrEl.style.height = '0px';
@@ -355,18 +359,18 @@ async function checkSubscriptionState() {
 
 async function pair() {
   const code = $('code').value.trim();
-  if (!/^\d{8}$/.test(code)) { statusEl.textContent = 'El código tiene 8 dígitos.'; return; }
+  if (!/^\d{8}$/.test(code)) { statusEl.textContent = 'Code must be 8 digits.'; return; }
   try {
     const res = await fetch('/api/pair', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code }),
     });
-    if (!res.ok) { statusEl.textContent = 'Código incorrecto o vencido. Pide otro en el Mac.'; return; }
+    if (!res.ok) { statusEl.textContent = 'Invalid or expired code. Generate a new one on your Mac.'; return; }
     setToken((await res.json()).token);
     showMain();
     await checkSubscriptionState();
-    statusEl.textContent = 'Vinculado ✓ Ahora activa las notificaciones.';
+    statusEl.textContent = 'Paired ✓ Now enable notifications.';
     loadList();
   } catch (e) {
     statusEl.textContent = 'Error: ' + e.message;
@@ -376,11 +380,11 @@ async function pair() {
 async function enable() {
   try {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-      statusEl.textContent = 'Instala la app en la pantalla de inicio (Compartir → Añadir) y ábrela desde ahí.';
+      statusEl.textContent = 'Install the app to your Home Screen (Share → Add to Home Screen) and open it from there.';
       return;
     }
     const perm = await Notification.requestPermission();
-    if (perm !== 'granted') { statusEl.textContent = 'Permiso denegado.'; return; }
+    if (perm !== 'granted') { statusEl.textContent = 'Permission denied.'; return; }
     const reg = await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
     if (!sub) {
@@ -396,8 +400,8 @@ async function enable() {
       body: JSON.stringify(sub),
     });
     btn.hidden = true;
-    statusEl.textContent = 'Notificaciones activadas ✓';
-    setTimeout(() => { if (statusEl.textContent === 'Notificaciones activadas ✓') statusEl.textContent = ''; }, 3000);
+    statusEl.textContent = 'Notifications enabled ✓';
+    setTimeout(() => { if (statusEl.textContent === 'Notifications enabled ✓') statusEl.textContent = ''; }, 3000);
   } catch (e) {
     statusEl.textContent = 'Error: ' + e.message;
   }
@@ -405,10 +409,10 @@ async function enable() {
 
 async function sendTest() {
   try {
-    statusEl.textContent = 'Enviando prueba en 5s...';
+    statusEl.textContent = 'Sending test in 5s...';
     await api('/api/test', { method: 'POST' });
     setTimeout(() => {
-      if (statusEl.textContent === 'Enviando prueba en 5s...') statusEl.textContent = '';
+      if (statusEl.textContent === 'Sending test in 5s...') statusEl.textContent = '';
       loadList();
     }, 5500);
   } catch (e) {

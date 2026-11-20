@@ -1,7 +1,7 @@
 // Shell cacheado para que la app abra aunque el túnel esté apagado.
 // Los avisos llegan desde Apple al service worker (incluso con la app cerrada)
 // y se guardan localmente para mostrarse al abrir la app.
-const CACHE = 'avisos-v5';
+const CACHE = 'avisos-v6';
 const DATA_CACHE = 'avisos-data-v1';
 const DATA_KEY = '/__local_data__';
 const SHELL = ['/', '/index.html', '/app.js', '/manifest.json', '/icon-192.png', '/icon-512.png'];
@@ -21,7 +21,7 @@ async function savePushLocally(data) {
     const id = Number(data.id) || Date.now();
     const time = Number(data.time) || Math.floor(Date.now() / 1000);
     if (store.deleted.includes(id)) return;
-    const item = { id, title: data.title || 'Aviso', body: data.body || '', time };
+    const item = { id, title: data.title || 'Notification', body: data.body || '', time };
     store.items = [item, ...store.items.filter(x => (x.id || x.time) !== id)].slice(0, 100);
     const c = await caches.open(DATA_CACHE);
     await c.put(DATA_KEY, new Response(JSON.stringify(store), {
@@ -70,17 +70,17 @@ self.addEventListener('fetch', event => {
 });
 
 self.addEventListener('push', event => {
-  let data = { title: 'Aviso', body: '' };
+  let data = { title: 'Notification', body: '' };
   try {
     if (event.data) data = event.data.json();
   } catch (_) {
-    data = { title: 'Aviso', body: event.data ? event.data.text() : '' };
+    data = { title: 'Notification', body: event.data ? event.data.text() : '' };
   }
   const options = { body: data.body || '', icon: '/icon-192.png' };
   if (data.tag) options.tag = data.tag;
   // iOS exige mostrar siempre una notificación inmediatamente en cada evento push
   // para entregar avisos cuando la app está cerrada o el teléfono bloqueado.
-  const showPromise = self.registration.showNotification(data.title || 'Aviso', options);
+  const showPromise = self.registration.showNotification(data.title || 'Notification', options);
   const savePromise = savePushLocally(data).then(() => notifyClients('push'));
   event.waitUntil(Promise.all([showPromise, savePromise]));
 });
