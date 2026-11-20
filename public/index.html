@@ -16,14 +16,17 @@
     * { box-sizing: border-box; }
     body { margin:0; padding:1rem; background:var(--bg); color:var(--text);
            font:16px/1.4 -apple-system, system-ui, sans-serif; max-width:640px; margin-inline:auto;
-           overflow-x:hidden; }
-    h1 { font-size:1.5rem; }
+           overflow-x:hidden; -webkit-tap-highlight-color:transparent; }
+    #ptr { height:0; overflow:hidden; display:flex; align-items:center; justify-content:center;
+           color:var(--muted); font-size:.85rem; transition:height .18s ease; }
+    #ptr.pulling { transition:none; }
+    h1 { font-size:1.5rem; margin-top:.2rem; }
     button { width:100%; padding:.8rem; font-size:1rem; border:0; border-radius:10px;
-             background:var(--accent); color:#fff; margin-bottom:.5rem; }
-    button.secondary { background:var(--card); color:var(--text); }
-    button:disabled { opacity:.5; }
-    #status { color:var(--muted); font-size:.9rem; min-height:1.2em; }
-    ul { list-style:none; padding:0; }
+             background:var(--accent); color:#fff; margin-bottom:.5rem; cursor:pointer; }
+    button:disabled { opacity:.4; cursor:default; }
+    #status { color:var(--muted); font-size:.88rem; margin:.2rem 0 .6rem; }
+    #status:empty { display:none; }
+    ul { list-style:none; padding:0; margin:0; }
     li { position:relative; border-radius:12px; margin-bottom:.6rem; background:transparent;
          overflow:hidden; user-select:none; -webkit-user-select:none; touch-action:pan-y; }
     li.swiping { background:var(--danger); }
@@ -37,6 +40,11 @@
     .title { font-weight:600; }
     .body { margin-top:.2rem; word-break:break-word; }
     .time { color:var(--muted); font-size:.8rem; margin-top:.3rem; }
+    .empty { text-align:center; color:var(--muted); font-size:.9rem; padding:2rem 0; }
+    .footer { display:flex; gap:.5rem; justify-content:center; margin-top:1.2rem; padding:.5rem 0 1.5rem; }
+    .btn-sm { width:auto; padding:.45rem .85rem; font-size:.82rem; border-radius:8px;
+              background:var(--card); color:var(--muted); margin:0; }
+    .btn-sm:active:not(:disabled) { opacity:.7; }
     input { width:100%; padding:.8rem; font-size:1.4rem; letter-spacing:.3em; text-align:center;
             border:1px solid var(--muted); border-radius:10px; background:var(--card); color:var(--text);
             margin-bottom:.5rem; }
@@ -44,6 +52,7 @@
   </style>
 </head>
 <body>
+  <div id="ptr"><span id="ptrText">Desliza para actualizar</span></div>
   <h1>Avisos</h1>
   <section id="pair" hidden>
     <p>Escribe el código de 8 dígitos que muestra <code>scripts/tunnel.sh</code> en tu Mac.</p>
@@ -51,11 +60,15 @@
     <button id="pairBtn">Vincular</button>
   </section>
   <section id="main" hidden>
-    <button id="enable">Activar notificaciones</button>
-    <button id="test" class="secondary">Probar notificación (5s)</button>
+    <button id="enable" hidden>Activar notificaciones</button>
   </section>
   <p id="status"></p>
   <ul id="list"></ul>
+  <p id="empty" class="empty" hidden>No hay notificaciones</p>
+  <footer id="footer" class="footer" hidden>
+    <button id="clearAll" class="btn-sm">Borrar todas</button>
+    <button id="test" class="btn-sm">Probar (5s)</button>
+  </footer>
   <script src="/app.js"></script>
 </body>
 </html>

@@ -17,8 +17,8 @@ use std::{
 use storage::{Notification, Subscription};
 use tower_http::services::ServeDir;
 use web_push::{
-    ContentEncoding, IsahcWebPushClient, SubscriptionInfo, VapidSignatureBuilder, WebPushClient,
-    WebPushError, WebPushMessageBuilder,
+    ContentEncoding, IsahcWebPushClient, SubscriptionInfo, Urgency, VapidSignatureBuilder,
+    WebPushClient, WebPushError, WebPushMessageBuilder,
 };
 
 /// Web Push payloads top out at about 3800 bytes, so long text is cut here.
@@ -68,7 +68,7 @@ async fn main() {
         .route("/api/pair/new", post(pair_new))
         .route("/api/pair", post(pair))
         .route("/api/subscribe", post(subscribe))
-        .route("/api/notifications", get(notifications))
+        .route("/api/notifications", get(notifications).delete(clear_notifications))
         .route("/api/notifications/:id", delete(delete_notification))
         .route("/api/status", get(status))
         .route("/api/notify", post(notify))
@@ -190,6 +190,14 @@ async fn delete_notification(
     StatusCode::NO_CONTENT
 }
 
+async fn clear_notifications(State(st): State<Shared>, headers: HeaderMap) -> StatusCode {
+    if !is_member(&st, &headers) {
+        return StatusCode::UNAUTHORIZED;
+    }
+    storage::clear_notifications();
+    StatusCode::NO_CONTENT
+}
+
 async fn status(State(st): State<Shared>, headers: HeaderMap) -> Result<Json<Value>, StatusCode> {
     if !is_admin(&st, &headers) {
         return Err(StatusCode::UNAUTHORIZED);
@@ -292,8 +300,9 @@ async fn send(
     sig.add_claim("sub", st.subject.as_str());
     let mut msg = WebPushMessageBuilder::new(&info);
     msg.set_payload(ContentEncoding::Aes128Gcm, payload);
-    // Una hora: si el iPhone está apagado más tiempo, el aviso ya no importa.
-    msg.set_ttl(3600);
+    // Urgency::High (apns-priority: 10) despierta al Service Worker en iOS aunque la app esté cerrada.
+    msg.set_urgency(Urgency::High);
+    msg.set_ttl(86400);
     msg.set_vapid_signature(sig.build()?);
     client.send(msg.build()?).await
 }

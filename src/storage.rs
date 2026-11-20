@@ -126,6 +126,15 @@ pub fn remove_notification(id: u64) -> bool {
     false
 }
 
+pub fn clear_notifications() {
+    let _g = LOCK.lock().unwrap();
+    let mut d = load();
+    if !d.notifications.is_empty() {
+        d.notifications.clear();
+        save(&d);
+    }
+}
+
 pub fn add_device(token: &str) {
     let _g = LOCK.lock().unwrap();
     let mut d = load();

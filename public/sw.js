@@ -1,7 +1,7 @@
 // Shell cacheado para que la app abra aunque el túnel esté apagado.
-// Los avisos llegan desde Apple al service worker y se guardan localmente
-// para que se vean dentro de la app incluso con el túnel cerrado.
-const CACHE = 'avisos-v4';
+// Los avisos llegan desde Apple al service worker (incluso con la app cerrada)
+// y se guardan localmente para mostrarse al abrir la app.
+const CACHE = 'avisos-v5';
 const DATA_CACHE = 'avisos-data-v1';
 const DATA_KEY = '/__local_data__';
 const SHELL = ['/', '/index.html', '/app.js', '/manifest.json', '/icon-192.png', '/icon-512.png'];
@@ -30,16 +30,19 @@ async function savePushLocally(data) {
   } catch (_) {}
 }
 
-async function notifyClients() {
+async function notifyClients(type = 'push') {
   try {
     const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    for (const client of list) client.postMessage({ type: 'push' });
+    for (const client of list) client.postMessage({ type });
   } catch (_) {}
 }
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)));
-  self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE)
+      .then(c => c.addAll(SHELL))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', event => {
@@ -47,6 +50,7 @@ self.addEventListener('activate', event => {
     caches.keys()
       .then(keys => Promise.all(keys.filter(k => k !== CACHE && k !== DATA_CACHE).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
+      .then(() => notifyClients('updated'))
   );
 });
 
@@ -54,7 +58,7 @@ self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   if (event.request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
   event.respondWith(
-    fetch(event.request)
+    fetch(event.request, { cache: 'no-store' })
       .then(res => {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const copy = res.clone();
@@ -74,13 +78,11 @@ self.addEventListener('push', event => {
   }
   const options = { body: data.body || '', icon: '/icon-192.png' };
   if (data.tag) options.tag = data.tag;
-  // iOS exige mostrar siempre una notificación por cada push.
-  event.waitUntil(
-    Promise.all([
-      savePushLocally(data).then(notifyClients),
-      self.registration.showNotification(data.title || 'Aviso', options),
-    ])
-  );
+  // iOS exige mostrar siempre una notificación inmediatamente en cada evento push
+  // para entregar avisos cuando la app está cerrada o el teléfono bloqueado.
+  const showPromise = self.registration.showNotification(data.title || 'Aviso', options);
+  const savePromise = savePushLocally(data).then(() => notifyClients('push'));
+  event.waitUntil(Promise.all([showPromise, savePromise]));
 });
 
 self.addEventListener('notificationclick', event => {
